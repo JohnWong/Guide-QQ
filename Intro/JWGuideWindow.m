@@ -19,6 +19,7 @@
 @property (nonatomic, assign) NSInteger step;
 @property (nonatomic, strong) NSArray *angleArray;
 @property (nonatomic, assign) CGFloat offset;
+@property (nonatomic, assign) CGFloat pauseTime;
 
 @end
 
@@ -48,10 +49,10 @@
 {
     if (!_angleArray) {
         _angleArray = @[
-                        @[@0.0, @1.0],
-                        @[@M_PI, @1.0],
-                        @[@(M_PI*116/180), @1.0],
-                        @[@(M_PI*64/180), @1.0]];
+                        @[@0.0, @0.0],
+                        @[@-M_PI, @3.0],
+                        @[@(M_PI * 116 / 180), @1.0],
+                        @[@(M_PI * 64 / 180), @1.0]];
     }
     return _angleArray;
 }
@@ -70,6 +71,7 @@
     CABasicAnimation *cloudFarAnimation=[CABasicAnimation animationWithKeyPath:@"transform.rotation"];
     cloudFarAnimation.fromValue=[NSNumber numberWithFloat:M_PI];
     cloudFarAnimation.toValue=[NSNumber numberWithFloat:-M_PI];
+    cloudFarAnimation.timingFunction = [CAMediaTimingFunction functionWithName: kCAMediaTimingFunctionLinear];
     //执行时间
     cloudFarAnimation.duration = CLOUD_FAR_TIME;
     //执行次数
@@ -79,6 +81,7 @@
     CABasicAnimation *cloudNearAnimation=[CABasicAnimation animationWithKeyPath:@"transform.rotation"];
     cloudNearAnimation.fromValue=[NSNumber numberWithFloat:M_PI];
     cloudNearAnimation.toValue=[NSNumber numberWithFloat:-M_PI];
+    cloudNearAnimation.timingFunction = [CAMediaTimingFunction functionWithName: kCAMediaTimingFunctionLinear];
     //执行时间
     cloudNearAnimation.duration = CLOUD_NEAR_TIME;
     //执行次数
@@ -86,9 +89,9 @@
     [self.cloudNearView.layer addAnimation:cloudNearAnimation forKey:@"change"];
 }
 
--(void)pauseAnimation
+-(void)pauseAnimationWithAngle:(CGFloat)angle time:(CGFloat)time
 {
-    [self pauseLayer:self.cloudFarView.layer];
+    [self pauseLayer:self.cloudFarView.layer angle:angle time:time];
 //    [self pauseLayer:self.cloudNearView.layer];
 }
 
@@ -100,27 +103,20 @@
 
 -(void)resumeLayer:(CALayer*)layer
 {
-    CGFloat time = [self.angleArray[self.step][1] floatValue];
-    CGFloat angle = [self.angleArray[self.step][0] floatValue];
-    
     layer.speed = 1.0;
     CFTimeInterval currentTime = CACurrentMediaTime();
     layer.beginTime = currentTime;
-    layer.timeOffset = currentTime + time * (angle / M_2_PI - 1) * 1;
-    NSLog(@"johnwong: %f %f", currentTime + time * (angle / M_2_PI - 1) * 1, self.offset);
+    layer.timeOffset = currentTime + self.offset;
     
 }
 
--(void)pauseLayer:(CALayer*)layer
+-(void)pauseLayer:(CALayer*)layer angle:(CGFloat)angle time:(CGFloat)time
 {
-    CGFloat time = [self.angleArray[self.step][1] floatValue];
-    CGFloat angle = [self.angleArray[self.step][0] floatValue];
-    
-    layer.speed = angle / M_2_PI;
+    layer.speed = (angle / time) / (M_PI * 2 / CLOUD_FAR_TIME);
     CFTimeInterval currentTime = CACurrentMediaTime();
     layer.beginTime = currentTime;
     layer.timeOffset = currentTime + self.offset;
-    self.offset += time * (angle / M_2_PI - 1);
+    self.offset +=  angle * CLOUD_FAR_TIME / (M_PI * 2) - time;
 }
 
 -(UIImageView*)cloudFarView
@@ -150,8 +146,11 @@
         self.step = self.step + 1;
         CGFloat angle = [self.angleArray[self.step][0] floatValue];
         CGFloat time = [self.angleArray[self.step][1] floatValue];
-        [self pauseAnimation];
-        [UIView animateWithDuration:time delay:0 options:UIViewAnimationOptionOverrideInheritedOptions | UIViewAnimationOptionBeginFromCurrentState animations:^{
+        CGFloat prevAngle = [self.angleArray[self.step - 1][0] floatValue];
+        CGFloat angleDistance = (prevAngle >= 0? prevAngle : 2 * M_PI + prevAngle) - angle;
+        NSLog(@"johnwong: %f", angleDistance);
+        [self pauseAnimationWithAngle:angleDistance time:time];
+        [UIView animateWithDuration:time delay:0 options:UIViewAnimationOptionOverrideInheritedOptions | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionCurveLinear animations:^{
             CGAffineTransform earthTransform = CGAffineTransformMakeRotation(angle);
             self.earthView.transform = earthTransform;
         } completion:^(BOOL finished) {
@@ -163,10 +162,10 @@
 -(void)prev
 {
     if (self.step > 0) {
-        [self pauseAnimation];
         self.step = self.step - 1;
         CGFloat angle = [self.angleArray[self.step][0] floatValue];
-        CGFloat time = [self.angleArray[self.step][1] floatValue];
+        CGFloat time = [self.angleArray[self.step + 1][1] floatValue];
+        [self pauseAnimationWithAngle:angle time:time];
         [UIView animateWithDuration:time delay:0 options:UIViewAnimationOptionCurveLinear|UIViewAnimationOptionOverrideInheritedOptions | UIViewAnimationOptionBeginFromCurrentState animations:^{
             CGAffineTransform earthTransform = CGAffineTransformMakeRotation(angle);
             self.earthView.transform = earthTransform;
