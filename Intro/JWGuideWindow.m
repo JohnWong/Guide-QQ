@@ -23,6 +23,7 @@
 @property (nonatomic, assign) CGFloat touchX;
 @property (nonatomic, assign) NSInteger direction;
 @property (nonatomic, assign) CGFloat stepDuration;
+@property (nonatomic, assign) BOOL isAnimating;
 
 @end
 
@@ -120,7 +121,7 @@
 
 -(void)resumeLayer:(CALayer*)layer
 {
-    CFTimeInterval pausedTime = [layer beginTime];
+    CFTimeInterval pausedTime = [layer timeOffset];
     layer.speed = 1.0;
     layer.timeOffset = 0.0;
     layer.beginTime = 0.0;
@@ -143,10 +144,8 @@
 -(UIView*)cloudFarView
 {
     if (!_cloudFarView) {
-        _cloudFarView = [[UIView alloc] initWithFrame:CGRectMake(-340, 150, 1000, 1000)];
-        UIImageView* innerView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 1000, 1000)];
-        innerView.image = [UIImage imageNamed:@"QQGuide_cloud1"];
-        [_cloudFarView.layer addSublayer:innerView.layer];
+        _cloudFarView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"QQGuide_cloud1"]];
+        _cloudFarView.frame = CGRectMake(-340, 150, 1000, 1000);
     }
     return _cloudFarView;
 }
@@ -154,10 +153,8 @@
 -(UIView*)cloudNearView
 {
     if (!_cloudNearView) {
-        _cloudNearView = [[UIView alloc] initWithFrame:CGRectMake(-133.25, 356.75, 586.5, 586.5)];
-        UIImageView* innerView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 586.5, 586.5)];
-        innerView.image = [UIImage imageNamed:@"QQGuide_cloud2"];
-        [_cloudNearView.layer addSublayer:innerView.layer];
+        _cloudNearView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"QQGuide_cloud2"]];
+        _cloudNearView.frame = CGRectMake(-133.25, 356.75, 586.5, 586.5);
     }
     return _cloudNearView;
 }
@@ -219,29 +216,42 @@
 
 -(void)doSwipe:(UISwipeGestureRecognizer*)recognizer
 {
-    if (self.direction == 0) {
-        switch (recognizer.direction) {
-            case UISwipeGestureRecognizerDirectionLeft:
-                [self next];
-                break;
-            case UISwipeGestureRecognizerDirectionRight:
-                [self prev];
-                break;
-            default:
-                break;
-        }
-    }
+//    if (self.direction == 0) {
+//        switch (recognizer.direction) {
+//            case UISwipeGestureRecognizerDirectionLeft:
+//                [self next];
+//                break;
+//            case UISwipeGestureRecognizerDirectionRight:
+//                [self prev];
+//                break;
+//            default:
+//                break;
+//        }
+//    }
+}
+
+-(void)animationDidStop:(CAAnimation *)anim finished:(BOOL)flag
+{
+    NSLog(@"%d", flag);
+    self.isAnimating = NO;
 }
 
 -(void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
 {
+    if (self.isAnimating) {
+        return;
+    }
     UITouch *touch = [touches anyObject];
     self.touchX = [touch locationInView:self].x;
+    self.direction = 0;
     [self pauseAnimation];
 }
 
 -(void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event
 {
+    if (self.isAnimating) {
+        return;
+    }
     UITouch *touch = [touches anyObject];
     CGFloat x = [touch locationInView:self].x;
     CGFloat progress = (x - self.touchX) / 160;
@@ -249,6 +259,9 @@
         // prev step
     } else if (progress <= -1.0) {
         // next step
+        self.step ++;
+        self.direction = 0;
+        [self resumeAnimation];
     } else if (progress > 0){
         // prev
         if (self.direction != 1) {
@@ -274,13 +287,13 @@
                 animation.duration = duration;
                 animation.fillMode = kCAFillModeForwards;
                 animation.removedOnCompletion = NO;
+                animation.delegate = self;
                 
                 [self.earthView.layer addAnimation:animation forKey:@"rotation"];
                 [self.cloudFarView.layer addAnimation:animation forKey:@"rotation"];
                 [self.cloudNearView.layer addAnimation:animation forKey:@"rotation"];
             }
         } else {
-            NSLog(@"%d", abs(progress * 1000 * self.stepDuration));
             [self resumeAnimationPartial: - progress * self.stepDuration];
         }
 
@@ -290,8 +303,11 @@
 
 -(void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
 {
-    UITouch *touch = [touches anyObject];
-//    self.touchX = [touch locationInView:self].x;
+    if (self.isAnimating) {
+        return;
+    }
+    self.isAnimating = YES;
+    [self resumeAnimation];
 }
 
 -(void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event
