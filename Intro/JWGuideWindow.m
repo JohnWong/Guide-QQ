@@ -14,12 +14,15 @@
 @interface JWGuideWindow()
 
 @property (nonatomic, strong) UIImageView *earthView;
-@property (nonatomic, strong) UIImageView *cloudFarView;
-@property (nonatomic, strong) UIImageView *cloudNearView;
+@property (nonatomic, strong) UIView *cloudFarView;
+@property (nonatomic, strong) UIView *cloudNearView;
 @property (nonatomic, assign) NSInteger step;
 @property (nonatomic, strong) NSArray *angleArray;
 @property (nonatomic, assign) CGFloat offset;
 @property (nonatomic, assign) CGFloat pauseTime;
+@property (nonatomic, assign) CGFloat touchX;
+@property (nonatomic, assign) NSInteger direction;
+@property (nonatomic, assign) CGFloat stepDuration;
 
 @end
 
@@ -40,7 +43,14 @@
                                                  selector:@selector(startAnimation)
                                                      name:UIApplicationWillEnterForegroundNotification
                                                    object:[UIApplication sharedApplication]];
+        UISwipeGestureRecognizer *swipeLeftRecognizer = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(doSwipe:)];
+        swipeLeftRecognizer.direction = UISwipeGestureRecognizerDirectionLeft;
+        [self addGestureRecognizer:swipeLeftRecognizer];
+        UISwipeGestureRecognizer *swipeRightRecognizer = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(doSwipe:)];
+        swipeRightRecognizer.direction = UISwipeGestureRecognizerDirectionRight;
         
+        
+        [self addGestureRecognizer:swipeRightRecognizer];
     }
     return self;
 }
@@ -49,10 +59,11 @@
 {
     if (!_angleArray) {
         _angleArray = @[
-                        @[@0.0, @0.0],
-                        @[@-M_PI, @3.0],
-                        @[@(M_PI * 116 / 180), @1.0],
-                        @[@(M_PI * 64 / 180), @1.0]];
+                        @[@{@"type": @"bg", @"from": @0, @"to": @0, @"duration": @0, @"begin": @0.0}],
+                        @[@{@"type": @"bg", @"from": @0, @"to": @-M_PI, @"duration": @1.2, @"begin": @1.8}, @{@"type":@"move", @"property": @"transform.translation.x", @"start": @30, @"end":@240, @"begin": @0, @"duration": @1.8}],
+                        @[@{@"type": @"bg", @"from": @-M_PI, @"to": @(M_PI * 112 / 180 - M_PI * 2), @"duration": @0.8, @"begin": @0.0}],
+                        @[@{@"type": @"bg", @"from": @(M_PI * 112 / 180 - M_PI * 2), @"to": @(M_PI * 63 / 180 - M_PI * 2), @"duration": @0.8, @"begin": @0.0}]
+                      ];
     }
     return _angleArray;
 }
@@ -68,72 +79,85 @@
 
 -(void)startAnimation
 {
-    CABasicAnimation *cloudFarAnimation=[CABasicAnimation animationWithKeyPath:@"transform.rotation"];
-    cloudFarAnimation.fromValue=[NSNumber numberWithFloat:M_PI];
-    cloudFarAnimation.toValue=[NSNumber numberWithFloat:-M_PI];
-    cloudFarAnimation.timingFunction = [CAMediaTimingFunction functionWithName: kCAMediaTimingFunctionLinear];
-    //执行时间
-    cloudFarAnimation.duration = CLOUD_FAR_TIME;
-    //执行次数
-    cloudFarAnimation.repeatCount=CGFLOAT_MAX;
-    [self.cloudFarView.layer addAnimation:cloudFarAnimation forKey:@"change"];
-    
-    CABasicAnimation *cloudNearAnimation=[CABasicAnimation animationWithKeyPath:@"transform.rotation"];
-    cloudNearAnimation.fromValue=[NSNumber numberWithFloat:M_PI];
-    cloudNearAnimation.toValue=[NSNumber numberWithFloat:-M_PI];
-    cloudNearAnimation.timingFunction = [CAMediaTimingFunction functionWithName: kCAMediaTimingFunctionLinear];
-    //执行时间
-    cloudNearAnimation.duration = CLOUD_NEAR_TIME;
-    //执行次数
-    cloudNearAnimation.repeatCount=CGFLOAT_MAX;
-    [self.cloudNearView.layer addAnimation:cloudNearAnimation forKey:@"change"];
+    [self startRotateAnimation:self.cloudFarView.layer.sublayers[0] withDuration:CLOUD_FAR_TIME];
+    [self startRotateAnimation:self.cloudNearView.layer.sublayers[0] withDuration:CLOUD_NEAR_TIME];
 }
 
--(void)pauseAnimationWithAngle:(CGFloat)angle time:(CGFloat)time
+-(void)startRotateAnimation:(CALayer*)layer withDuration:(CFTimeInterval)duration
 {
-    [self pauseLayer:self.cloudFarView.layer angle:angle time:time];
-//    [self pauseLayer:self.cloudNearView.layer];
+    CABasicAnimation *animation=[CABasicAnimation animationWithKeyPath:@"transform.rotation"];
+    animation.fromValue=[NSNumber numberWithFloat:M_PI];
+    animation.toValue=[NSNumber numberWithFloat:-M_PI];
+    animation.timingFunction = [CAMediaTimingFunction functionWithName: kCAMediaTimingFunctionLinear];
+    //执行时间
+    animation.duration = duration;
+    //执行次数
+    animation.repeatCount=CGFLOAT_MAX;
+    [layer addAnimation:animation forKey:@"rotation"];
+}
+
+-(void)pauseAnimation
+{
+    [self pauseLayer:self.earthView.layer];
+    [self pauseLayer:self.cloudFarView.layer];
+    [self pauseLayer:self.cloudNearView.layer];
 }
 
 -(void)resumeAnimation
 {
     [self resumeLayer:self.cloudFarView.layer];
-//    [self resumeLayer:self.cloudNearView.layer];
+    [self resumeLayer:self.cloudNearView.layer];
+    [self resumeLayer:self.earthView.layer];
+}
+
+-(void)pauseLayer:(CALayer*)layer
+{
+    CFTimeInterval pausedTime = [layer convertTime:CACurrentMediaTime() fromLayer:nil];
+    layer.speed = 0.0;
+    layer.timeOffset = pausedTime;
+    layer.beginTime = pausedTime;
 }
 
 -(void)resumeLayer:(CALayer*)layer
 {
+    CFTimeInterval pausedTime = [layer beginTime];
     layer.speed = 1.0;
-    CFTimeInterval currentTime = CACurrentMediaTime();
-    layer.beginTime = currentTime;
-    layer.timeOffset = currentTime + self.offset;
-    
+    layer.timeOffset = 0.0;
+    layer.beginTime = 0.0;
+    CFTimeInterval timeSincePause = [layer convertTime:CACurrentMediaTime() fromLayer:nil] - pausedTime;
+    layer.beginTime = timeSincePause;
 }
 
--(void)pauseLayer:(CALayer*)layer angle:(CGFloat)angle time:(CGFloat)time
+-(void)resumeLayerPartial:(CALayer*)layer time: (CGFloat)time
 {
-    layer.speed = (angle / time) / (M_PI * 2 / CLOUD_FAR_TIME);
-    CFTimeInterval currentTime = CACurrentMediaTime();
-    layer.beginTime = currentTime;
-    layer.timeOffset = currentTime + self.offset;
-    self.offset +=  angle * CLOUD_FAR_TIME / (M_PI * 2) - time;
+    layer.timeOffset = layer.beginTime + time;
 }
 
--(UIImageView*)cloudFarView
+-(void)resumeAnimationPartial:(CGFloat)time
+{
+    [self resumeLayerPartial:self.earthView.layer time:time];
+    [self resumeLayerPartial:self.cloudFarView.layer time:time];
+    [self resumeLayerPartial:self.cloudNearView.layer time:time];
+}
+
+-(UIView*)cloudFarView
 {
     if (!_cloudFarView) {
-        _cloudFarView = [[UIImageView alloc] initWithFrame:CGRectMake(-340, 150, 1000, 1000)];
-        _cloudFarView.image = [UIImage imageNamed:@"QQGuide_cloud1"];
-        
+        _cloudFarView = [[UIView alloc] initWithFrame:CGRectMake(-340, 150, 1000, 1000)];
+        UIImageView* innerView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 1000, 1000)];
+        innerView.image = [UIImage imageNamed:@"QQGuide_cloud1"];
+        [_cloudFarView.layer addSublayer:innerView.layer];
     }
     return _cloudFarView;
 }
 
--(UIImageView*)cloudNearView
+-(UIView*)cloudNearView
 {
     if (!_cloudNearView) {
-        _cloudNearView = [[UIImageView alloc] initWithFrame:CGRectMake(-133.25, 356.75, 586.5, 586.5)];
-        _cloudNearView.image = [UIImage imageNamed:@"QQGuide_cloud2"];
+        _cloudNearView = [[UIView alloc] initWithFrame:CGRectMake(-133.25, 356.75, 586.5, 586.5)];
+        UIImageView* innerView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 586.5, 586.5)];
+        innerView.image = [UIImage imageNamed:@"QQGuide_cloud2"];
+        [_cloudNearView.layer addSublayer:innerView.layer];
     }
     return _cloudNearView;
 }
@@ -141,21 +165,30 @@
 -(void)next
 {
     if (self.step < 3) {
-        CGAffineTransform transform = self.cloudFarView.transform;
-        NSLog(@"johnwong: %f %f %f %f %f %f", transform.a, transform.b, transform.c, transform.d, transform.tx, transform.ty);
         self.step = self.step + 1;
-        CGFloat angle = [self.angleArray[self.step][0] floatValue];
-        CGFloat time = [self.angleArray[self.step][1] floatValue];
-        CGFloat prevAngle = [self.angleArray[self.step - 1][0] floatValue];
-        CGFloat angleDistance = (prevAngle >= 0? prevAngle : 2 * M_PI + prevAngle) - angle;
-        NSLog(@"johnwong: %f", angleDistance);
-        [self pauseAnimationWithAngle:angleDistance time:time];
-        [UIView animateWithDuration:time delay:0 options:UIViewAnimationOptionOverrideInheritedOptions | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionCurveLinear animations:^{
-            CGAffineTransform earthTransform = CGAffineTransformMakeRotation(angle);
-            self.earthView.transform = earthTransform;
-        } completion:^(BOOL finished) {
-            [self resumeAnimation];
-        }];
+        CGFloat from = [self.angleArray[self.step][0][@"from"] floatValue];
+        CGFloat to = [self.angleArray[self.step][0][@"to"] floatValue];
+        CGFloat duration = [self.angleArray[self.step][0][@"duration"] floatValue];
+        
+        CABasicAnimation *animation=[CABasicAnimation animationWithKeyPath:@"transform.rotation"];
+        animation.fromValue= [NSNumber numberWithFloat:from];
+        animation.toValue= [NSNumber numberWithFloat:to];
+        animation.timingFunction = [CAMediaTimingFunction functionWithName: kCAMediaTimingFunctionLinear];
+        animation.duration = duration;
+        animation.fillMode = kCAFillModeForwards;
+        animation.removedOnCompletion = NO;
+        
+        [self.earthView.layer addAnimation:animation forKey:@"rotation"];
+        [self.cloudFarView.layer addAnimation:animation forKey:@"rotation"];
+        [self.cloudNearView.layer addAnimation:animation forKey:@"rotation"];
+
+//        [UIView animateWithDuration:duration delay:0 options:UIViewAnimationOptionOverrideInheritedOptions | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionCurveLinear animations:^{
+//            CGAffineTransform transform = CGAffineTransformMakeRotation(to);
+//            self.earthView.transform = transform;
+//            self.cloudFarView.transform = transform;
+//            self.cloudNearView.transform = transform;
+//        } completion:^(BOOL finished) {
+//        }];
     }
 }
 
@@ -163,12 +196,16 @@
 {
     if (self.step > 0) {
         self.step = self.step - 1;
-        CGFloat angle = [self.angleArray[self.step][0] floatValue];
-        CGFloat time = [self.angleArray[self.step + 1][1] floatValue];
-        [self pauseAnimationWithAngle:angle time:time];
+        CGFloat angle = [self.angleArray[self.step][0][@"angle"] floatValue];
+        CGFloat time = [self.angleArray[self.step + 1][0][@"duration"] floatValue];
+        [self pauseAnimation];
+        
+        
         [UIView animateWithDuration:time delay:0 options:UIViewAnimationOptionCurveLinear|UIViewAnimationOptionOverrideInheritedOptions | UIViewAnimationOptionBeginFromCurrentState animations:^{
-            CGAffineTransform earthTransform = CGAffineTransformMakeRotation(angle);
-            self.earthView.transform = earthTransform;
+            CGAffineTransform transform = CGAffineTransformMakeRotation(angle);
+            self.earthView.transform = transform;
+            self.cloudFarView.transform = transform;
+            self.cloudNearView.transform = transform;
         } completion:^(BOOL finished) {
             [self resumeAnimation];
         }];
@@ -178,5 +215,87 @@
 -(void)dealloc
 {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+-(void)doSwipe:(UISwipeGestureRecognizer*)recognizer
+{
+    if (self.direction == 0) {
+        switch (recognizer.direction) {
+            case UISwipeGestureRecognizerDirectionLeft:
+                [self next];
+                break;
+            case UISwipeGestureRecognizerDirectionRight:
+                [self prev];
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+-(void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
+{
+    UITouch *touch = [touches anyObject];
+    self.touchX = [touch locationInView:self].x;
+    [self pauseAnimation];
+}
+
+-(void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event
+{
+    UITouch *touch = [touches anyObject];
+    CGFloat x = [touch locationInView:self].x;
+    CGFloat progress = (x - self.touchX) / 160;
+    if (progress >= 1.0) {
+        // prev step
+    } else if (progress <= -1.0) {
+        // next step
+    } else if (progress > 0){
+        // prev
+        if (self.direction != 1) {
+            self.direction = 1;
+        }
+        
+    } else {
+        // next
+        if (self.direction != 2) {
+            self.direction = 2;
+            // Add animation
+            if (self.step < 3) {
+                self.step = self.step + 1;
+                CGFloat from = [self.angleArray[self.step][0][@"from"] floatValue];
+                CGFloat to = [self.angleArray[self.step][0][@"to"] floatValue];
+                CGFloat duration = [self.angleArray[self.step][0][@"duration"] floatValue];
+                self.stepDuration = duration;
+                
+                CABasicAnimation *animation=[CABasicAnimation animationWithKeyPath:@"transform.rotation"];
+                animation.fromValue= [NSNumber numberWithFloat:from];
+                animation.toValue= [NSNumber numberWithFloat:to];
+                animation.timingFunction = [CAMediaTimingFunction functionWithName: kCAMediaTimingFunctionLinear];
+                animation.duration = duration;
+                animation.fillMode = kCAFillModeForwards;
+                animation.removedOnCompletion = NO;
+                
+                [self.earthView.layer addAnimation:animation forKey:@"rotation"];
+                [self.cloudFarView.layer addAnimation:animation forKey:@"rotation"];
+                [self.cloudNearView.layer addAnimation:animation forKey:@"rotation"];
+            }
+        } else {
+            NSLog(@"%d", abs(progress * 1000 * self.stepDuration));
+            [self resumeAnimationPartial: - progress * self.stepDuration];
+        }
+
+        
+    }
+}
+
+-(void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
+{
+    UITouch *touch = [touches anyObject];
+//    self.touchX = [touch locationInView:self].x;
+}
+
+-(void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event
+{
+    [self touchesEnded:touches withEvent:event];
 }
 @end
