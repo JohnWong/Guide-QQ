@@ -111,6 +111,29 @@
     [self resumeLayer:self.earthView.layer];
 }
 
+-(void)backwardAnimation
+{
+    [self backwardLayer:self.cloudFarView.layer];
+    [self backwardLayer:self.cloudNearView.layer];
+}
+
+-(void)backwardLayer:(CALayer*)layer
+{
+    // TODO
+    NSNumber *currentValue = (NSNumber *)[layer valueForKeyPath:@"transform.rotation"];
+    CABasicAnimation *anim = (CABasicAnimation*)[layer animationForKey:@"rotation"];
+    NSNumber *fromValue = anim.fromValue;
+    
+    CABasicAnimation *animation=[CABasicAnimation animationWithKeyPath:@"transform.rotation"];
+    animation.fromValue= currentValue;
+    animation.toValue= fromValue;
+    animation.timingFunction = [CAMediaTimingFunction functionWithName: kCAMediaTimingFunctionLinear];
+    animation.duration = anim.timeOffset - anim.beginTime;
+    animation.fillMode = kCAFillModeForwards;
+//    animation.removedOnCompletion = NO;
+    [layer addAnimation:animation forKey:@"backward"];
+}
+
 -(void)pauseLayer:(CALayer*)layer
 {
     CFTimeInterval pausedTime = [layer convertTime:CACurrentMediaTime() fromLayer:nil];
@@ -144,7 +167,10 @@
 -(UIView*)cloudFarView
 {
     if (!_cloudFarView) {
-        _cloudFarView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"QQGuide_cloud1"]];
+        UIImageView *inner = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"QQGuide_cloud1"]];
+        inner.frame = CGRectMake(0, 0, 1000, 1000);
+        _cloudFarView = [[UIView alloc] init];
+        [_cloudFarView.layer addSublayer:inner.layer];
         _cloudFarView.frame = CGRectMake(-340, 150, 1000, 1000);
     }
     return _cloudFarView;
@@ -153,7 +179,10 @@
 -(UIView*)cloudNearView
 {
     if (!_cloudNearView) {
-        _cloudNearView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"QQGuide_cloud2"]];
+        UIImageView *inner = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"QQGuide_cloud2"]];
+        inner.frame = CGRectMake(0, 0, 586.5, 586.5);
+        _cloudNearView = [[UIView alloc] init];
+        [_cloudNearView.layer addSublayer:inner.layer];
         _cloudNearView.frame = CGRectMake(-133.25, 356.75, 586.5, 586.5);
     }
     return _cloudNearView;
@@ -232,8 +261,9 @@
 
 -(void)animationDidStop:(CAAnimation *)anim finished:(BOOL)flag
 {
-    NSLog(@"%d", flag);
-    self.isAnimating = NO;
+    if (anim == [self.earthView.layer animationForKey:@"rotation"]) {
+        self.isAnimating = NO;
+    }
 }
 
 -(void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
@@ -244,13 +274,15 @@
     UITouch *touch = [touches anyObject];
     self.touchX = [touch locationInView:self].x;
     self.direction = 0;
-    [self pauseAnimation];
 }
 
 -(void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event
 {
     if (self.isAnimating) {
         return;
+    }
+    if (self.earthView.layer.speed) {
+        [self pauseAnimation];
     }
     UITouch *touch = [touches anyObject];
     CGFloat x = [touch locationInView:self].x;
@@ -306,8 +338,15 @@
     if (self.isAnimating) {
         return;
     }
-    self.isAnimating = YES;
-    [self resumeAnimation];
+    if (self.direction) {
+        self.isAnimating = YES;
+    }
+    if (self.earthView.layer.speed == 0) {
+        [self resumeAnimation];
+        // TODO
+//        [self backwardAnimation];
+    }
+    
 }
 
 -(void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event
